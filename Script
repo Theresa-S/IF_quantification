@@ -1,0 +1,149 @@
+// Copyright 2020, Theresa Suckert, OncoRay/DKTK Dresden
+ 
+// Redistribution and use in source and binary forms, with or without modification, 
+// are permitted provided that the following conditions are met:
+// 
+// 1. Redistributions of source code must retain the above copyright notice, this 
+//    list of conditions and the following disclaimer.
+// 
+// 2. Redistributions in binary form must reproduce the above copyright notice, 
+//    this list of conditions and the following disclaimer in the documentation 
+//    and/or other materials provided with the distribution.
+// 
+// 3. Neither the name of the copyright holder nor the names of its contributors 
+//    may be used to endorse or promote products derived from this software without 
+//    specific prior written permission.
+// 
+// THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND 
+// ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED 
+// WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. 
+// IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, 
+// INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT 
+// NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR 
+// PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, 
+// WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) 
+// ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE 
+// POSSIBILITY OF SUCH DAMAGE.
+//
+//####################################################################################
+ 
+// Configuration
+
+//clean up before we start
+//Check if the summary window is closed
+run("Close All");
+run("Clear Results");
+
+//define the settings for later evaluation, depending on what you want to measure:
+run("Set Measurements...", "area_fraction redirect=None decimal=2");
+Composite = "Composite";
+var savename = 0;
+
+//Executed:
+processImage();
+exit();
+
+//Here you can find the called subfunctions, see below for details
+
+function processImage(){
+	opening();
+	preprocessing();
+	thresholding();
+	userVerification();
+	evaluation();
+	saving();
+};	
+
+function opening(){	
+//This part of the skript was written to work with the BioFormats import function!
+//[if you have bioformats import,] choose the file you want to process and use the following settings: 
+//Autoscale, Color mode=Composite, all the others unchecked --> OK, then series with highest resolution
+	file = File.openDialog('select file');
+	open(file);
+	path= getDirectory("image");
+	rename(Composite);
+	name = File.nameWithoutExtension();
+	savename = path + name;
+	return savename;
+};
+
+function preprocessing(){
+	//the channels are going to be processed seperately. For this, we need to split the channels. 
+	//Single channel images get duplicated and the following steps performed on the duplicated image. They get renamed according to their marker
+	//For later confirmability, the original channel images are kept and optimized
+
+	selectWindow("Composite");
+	run("Split Channels");
+	//selectWindow("C2-Composite");
+	run("Window/Level...");
+	run("Enhance Contrast", "saturated=0.35");
+	waitForUser("Background correction", "Artefacts in the background can screw up your thresholding. \nChoose the color picker and click on representative background. \nUse Flood fill tool and paint tool to get an even backround. \nYou can also remove tissue you want to exclude from evaluation. \nClick ok to proceed.");
+	run("Duplicate...", "title=mask-tumor");
+	waitForUser("Mask area of interest", "Use Freehand selections. Hold shift to mark several areas. Hold Alt to remove areas. Click ok when done.");
+	selectWindow("C2-Composite");
+	run("Duplicate...", "title=dapi-mask");
+	selectWindow("C1-Composite");
+	run("Window/Level...");
+	run("Enhance Contrast", "saturated=0.35");
+	run("Close");
+	waitForUser("Background correction", "Artefacts in the background can screw up your thresholding. \nChoose the color picker and click on representative background. \nUse Flood fill tool and paint tool to get an even backround. \nYou can also remove tissue you want to exclude from evaluation. \nClick ok to proceed.");
+	run("Duplicate...", "title=marker-mask");
+};
+
+function thresholding(){	
+	//now we mask the picture by thresholding. The thresholding method may have to be adjusted to your images
+	
+	selectWindow("marker-mask");		
+	setAutoThreshold("Triangle dark");
+	run("Make Binary");
+	run("Close-");
+	
+	selectWindow("dapi-mask");	
+	setAutoThreshold("Triangle dark");	
+	run("Make Binary");
+	run("Watershed");
+};
+
+function userVerification(){
+	//This is a verification step, so that the user can check if the thresholding yields reasonable results
+	//If the answer is no, abort and rerun the programm with a different thresholding method!
+	waitForUser("Verification of Thresholding", "Click ok if applied threshold is suitable, kill if not");
+
+	//in a second step you can manually exclude image artefacts (e.g. PapPen or bubbles) by painting them black 
+	//This means they get assigned the value 0
+	waitForUser("Remove artefacts", "Use painting tools to eliminate background artefacts, then click ok");
+};
+
+function evaluation(){ 
+	selectWindow("mask-tumor");
+	selectWindow("marker-mask");
+	run("Restore Selection");
+	run("Analyze Particles...", "summarize slice size=0-Infinity summarize"); 
+	selectWindow("mask-tumor");
+	selectWindow("dapi-mask");
+	run("Restore Selection");
+	run("Analyze Particles...", "summarize slice size=0-Infinity summarize");
+};
+
+function saving(){
+	//Finally, save the images in a stack for later verification. RGB is needed otherwise all pics will get the same LUT
+	//Save the summary in a .csv file
+	//Remember to choose the right seperators in your Excel settings when further processing the data
+	selectWindow("mask-tumor");
+	run("Flatten");
+	run("RGB Color");
+	selectWindow("mask-tumor");
+	run("Close");
+	selectWindow("C1-Composite");
+	run("RGB Color");
+	run("Images to Stack", "title=[] use");
+	savenameImage = savename + "_evaluation";
+	saveAs(".Tiff", savenameImage);
+	
+	savenameSummary = savename + "_results.csv";
+	selectWindow("Summary");
+	saveAs("Results", savenameSummary);
+	run("Close");
+	
+	run("Close All");
+};
