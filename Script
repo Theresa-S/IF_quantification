@@ -1,4 +1,13 @@
+// This is an ImageJ macro for semi-automated quantification of immunofluorescent images with two color channels (default: %area, cell number)
+// First you have the option to manually correct the background and select the area of interest
+// Then the markers get segmented with an *automated* threshold. Please don't do this step manually to avoid observer bias!
+// Choose the respective thresholding method with care, this is the most crucial step of the evaluation pipeline! 
+// You have the option to check the thresholding with userVerficiation() for each individual image. Or you can comment this step out with a "//"
+// Finally, measurements are done on the segmented images and the results are saved. The specific measurements are defined in line 47
+// Happy image evaluation :-)
+
 // Copyright 2020, Theresa Suckert, OncoRay/DKTK Dresden
+// email: theresa.suckert@yahoo.de
  
 // Redistribution and use in source and binary forms, with or without modification, 
 // are permitted provided that the following conditions are met:
@@ -71,6 +80,7 @@ function preprocessing(){
 	//the channels are going to be processed seperately. For this, we need to split the channels. 
 	//Single channel images get duplicated and the following steps performed on the duplicated image. They get renamed according to their marker
 	//For later confirmability, the original channel images are kept and optimized
+	//Comment: Artefacts are e.g. dust specs, non-relevant tissue relicts, or black edges at the corners due to tile aquisition
 
 	selectWindow("Composite");
 	run("Split Channels");
